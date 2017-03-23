@@ -12,9 +12,45 @@ The first form, `[`, can be used to extract content from vector, lists, or data 
     x[13:15] # extract last 3 elements
     x[(length(x)-2):length(x)] # extract last 3 elements
 
+## Example: Reading Data Files with the Extract Operator
+
+Noting John Chambers' statement that <em>In R, everything is an object</em>, the `[` form of the extract operator can be used to extract data from the result of a function call. The following code executes `list.files()` on a subdirectory of the current R working directory that contains comma separated values files of Pokemon statistics, one file for each of the first 6 generations of Pokemon.
+
+Notice that there are 7 files in the subdirectory.
+
+<img src="./images/rprog-extractOperator03.png">
+
+    # return first two generations of Pokemon stored in
+    # pokemon data files retrieved from kaggle.com and
+    # broken out into 6 csv files, one per generation
+
+    thePokemonFiles <- list.files("./pokedata",
+                                  full.names=TRUE)[1:2]
+    thePokemonFiles
+
+The above code executes `list.files()`, and then the extract operator `[1:2]` is applied to the output object, resulting in a `thePokemonFiles` object containing the first two files returned from the `list.files()` function.
+
+<img src="./images/rprog-extractOperator04.png">
+
 When used with a list, `[` extracts one or more elements from the list.
 
 The second and third forms of the extract operator, `[[` and `$` extract a single item from an object. Note that `$` does not support a computed index, as illustrated in an example below.  
+
+Returning to our Pokemon example, we can use the output from `list.files()`, along with the `[[` form of the extract operator and `lapply()` to read a subset of columns from the data files.
+
+    pokemonData <- lapply(thePokemonFiles,function(x) read.csv(x)[["Attack"]])
+    # show the list of vectors
+    summary(pokemonData)
+
+<img src="./images/rprog-extractOperator05.png">
+
+The key feature of this code is use of an anonymous function within `lapply()` so we can apply the extract operator to the result of `read.csv()`. After the `lapply()` function executes, the `pokemonData` object is a list containing two vectors, the `Attack` column from each of the two files we read with `read.csv()`.
+
+To combine the elements from the list into a single vector for subsequent processing, we can use the `unlist()` function.
+
+## Comparing Forms of the Extract Operator
+
+Since the easiest way to see how the various features of the extract operator work is to see code examples, we provide a number of code snippets to illustrate various ways to use the different forms of the operator.
 
 The following code examples use the `mtcars` data set from the `datasets` package.
 
@@ -76,7 +112,20 @@ Having illustrated different ways to extract content with the extract operator, 
     #             array instead of row numbers as in the prior example
     head(mtcars[!is.na(mtcars[,"cyl"]),])
 
+## Getting Help with Operators
+
+Students quickly learn that the help operator, `?`, is used to access R documentation. However, requesting help for an operator is a bit more complicated than it first appears:
+
+<img src="./images/rprog-extractOperator01.png">
+
+Instead, one has to place the operator in double quotes, as in `?"["` to access help for the extract operator.
+
+<img src="./images/rprog-extractOperator02.png">
+
+A more detailed explanation of the help function `help(...)` and help operator `?` may be found on the [Getting Help with R](https://www.r-project.org/help.html) page on the [R Project](https://www.r-project.org/) website.
+
 ## References
 
 1. [Extract {base} R Documentation](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Extract.html), retrieved 22 May 2016.
-2. [SlotOp {base} R Documentation](https://stat.ethz.ch/R-manual/R-devel/library/base/html/slotOp.html), retrieved 22 May 2016.  
+2. [SlotOp {base} R Documentation](https://stat.ethz.ch/R-manual/R-devel/library/base/html/slotOp.html), retrieved 22 May 2016.
+3. [Pokemon Data by Alberto Barradas](https://www.kaggle.com/abcsds/pokemon)

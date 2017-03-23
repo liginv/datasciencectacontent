@@ -14,6 +14,12 @@ Lexical scoping is used to retrieve values from objects based on the way functio
 
 Understanding of scoping is key to *R Programming Assignment 2*, because the fact that the "cache" works is due to how the code is built at design time, not how the code is called at runtime.
 
+## What's the importance of caching? 
+
+A cache is a way to [store objects in memory to accelerate subsequent access](https://en.wikipedia.org/wiki/Cache_(computing)) to the same object. In statistics, some matrix algebra computations are notoriously expensive, such as calculating the inverse of a matrix. Therefore, if one needs to use the same inverted matrix for subsequent computations, it is advantageous to cache it in memory instead of repeatedly calculating the inverse. Programming Assignment 2 uses the scenario of needing to cache an inverted matrix as a way of illustrating how this might be done with a special matrix object that stores its inverse as an in-memory object. 
+
+The assignment uses an example of caching a mean to illustrate the underlying concepts of scoping and creating an S3 object, as I discuss in [R Objects, S Objects, and Lexical Scoping]](http://bit.ly/2dtOSXi). 
+
 ## Overall Design of makeVector() and cachemean()
 
 The cachemean.R file contains two functions, `makeVector()` and `cachemean()`. The first function in the file, `makeVector()` creates an R object that stores a vector and its mean. The second function, `cachemean()` requires an argument that is returned by `makeVector()` in order to retrieve the mean from the cached value that is stored in the `makeVector()` object's environment.
@@ -56,16 +62,20 @@ Now, let's break the behavior of the function down, step by step.
 
 The first thing that occurs in the function is the initialization of two objects, `x` and `m`.
 
-    makeVector(x) {
+    makeVector(x = numeric()) {
       m <- NULL
       ...
     }
 
 Notice that `x` is initialized as a function argument, so no further initialization is required within the function. `m` is set to NULL, initializing it as an object within the makeVector() environment to be used by later code in the function.
 
+Furthermore, the formals part of the function declaration define the default value of `x` as an empty numeric vector. Initialization of the vector with a default value is important because without a default value, `data <- x$get()` generates the following error message.
+
+     Error in x$get() : argument "x" is missing, with no default
+
 ### Step 2: Define the "behaviors" or functions for objects of type makeVector()
 
-After initializing key objects that store key information within `makeVector()`, the code provides four basic behaviors that are typical for data elements within an object-oriented program. They're known as "getters and settters."  As one might expect, "getters" are program modules that retrieve data within an object, and "setters" are program modules that set the data values within an object.
+After initializing key objects that store key information within `makeVector()`, the code provides four basic behaviors that are typical for data elements within an [object-oriented program](https://en.wikipedia.org/wiki/Object-oriented_programming). They're called "getters and settters," and more formally known as [mutator and accessor](https://en.wikipedia.org/wiki/Mutator_method) methods.  As one might expect, "getters" are program modules that retrieve (access) data within an object, and "setters" are program modules that set (mutate) the data values within an object.
 
 First `makeVector()` defines the `set()` function. Most of the "magic" in `makeVector()` takes place in the `set()` function.  
 
@@ -74,16 +84,18 @@ First `makeVector()` defines the `set()` function. Most of the "magic" in `makeV
         m <<- NULL
     }
 
-Here we use the `<<-` [form of the assignment operator](https://github.com/lgreski/datasciencectacontent/blob/master/markdown/rprog-assignmentOperators.md), which assigns the value on the right side of the operator to an object in the parent environment named by the object on the left side of the operator.
+`set()` takes an argument that is named as `y`. It is assumed that this value is a numeric vector, but is not stated directly in the function formals. For the purposes of the `set()` function, it doesn't matter whether this argument is called `y`, `aVector` or any object name other than `x`. Why? Since there is an `x` object already defined in the `makeVector()` environment, using the same object name would make the code more difficult to understand.  
+
+Within `set()` we use the `<<-` [form of the assignment operator](https://github.com/lgreski/datasciencectacontent/blob/master/markdown/rprog-assignmentOperators.md), which assigns the value on the right side of the operator to an object in the parent environment named by the object on the left side of the operator.
 
 When `set()` is executed, it does two things:
 
 1. Assign the input argument to the `x` object in the parent environment, and
-2. Assign the value of NULL to the `m` object in the parent environment.
+2. Assign the value of NULL to the `m` object in the parent environment. This line of code clears any value of `m` that had been cached by a prior execution of `cachemean()`. 
 
 Therefore, if there is already a valid mean cached in `m`, whenever `x` is reset, the value of `m` cached in the memory of the object is cleared, forcing subsequent calls to `cachemean()` to recalculate the mean rather than retrieving the wrong value from cache.
 
-Notice that the two lines of code in `set()` do exactly the same thing as the first two lines in the main function: set the value of `x`, and NULL the value of `m`. 
+Notice that the two lines of code in `set()` do exactly the same thing as the first two lines in the main function: set the value of `x`, and NULL the value of `m`.
 
 Second, `makeVector()` defines the getter for the vector `x`.
 
@@ -124,20 +136,62 @@ Here it's important to note that the `cachemean()` function REQUIRES an input ar
 
      aResult <- cachemean(1:15)
 
-the function call will fail with an error explaining that `cachemean()` was unable to access `$getmean()` on the input argument because `$` does not work with atomic vectors. This is accurate, because a primitive vector is not a list, nor does it contain a `$getmean()` function, as illustrated below. 
+the function call will fail with an error explaining that `cachemean()` was unable to access `$getmean()` on the input argument because `$` does not work with atomic vectors. This is accurate, because a primitive vector is not a list, nor does it contain a `$getmean()` function, as illustrated below.
 
     > aVector <- 1:10
     > cachemean(aVector)
     Error in x$getmean : $ operator is invalid for atomic vectors
 
+## Explaining cachemean()
+
+Without `cachemean()`, the `makeVector()` function is incomplete. Why? As designed, `cachemean()` is required to populate or retrieve the mean from an object of type `makeVector()`. 
+
+    cachemean <- function(x, ...) {
+         ...
+         
+Like `makeVector()`, `cachemean()` starts with a single argument, `x`, and an ellipsis that allows the caller to pass additional arguments into the function. 
+
+Next, the function attempts to retrieve a mean from the object passed in as the argument. First, it calls the `getmean()` function on the input object. 
+
+         m <- x$getmean()
+         
+Then it checks to see whether the result is `NULL`. Since `makeVector()` sets the cached mean to `NULL` whenever a new vector is set into the object, if the value here is not equal to `NULL`, we have a valid, cached mean and can return it to the parent environment  
+
+
+         if(!is.null(m)) {
+              message("getting cached data")
+              return(m)
+         }
+
+If the result of `!is.null(m)` is `FALSE`, `cachemean()` gets the vector from the input object, calculates a `mean()`, uses the `setmean()` function on the input object to set the mean in the input object, and then returns the value of the mean to the parent environment by printing the mean object. 
+
+         data <- x$get()
+         m <- mean(data, ...)
+         x$setmean(m)
+         m
+
+Note that `cachemean()` is the only place where the `mean()` function is executed, which is why `makeVector()` is incomplete without `cachemean()`. 
+
+## Putting the Pieces Together: How the functions work at runtime
+
+Now that we've explained the design of each of these functions, here is an illustration of how they work when used in an R script.
+
+      aVector <- makeVector(1:10)
+      aVector$get()               # retrieve the value of x
+      aVector$getmean()           # retrieve the value of m, which should be NULL
+      aVector$set(30:50)          # reset value with a new vector
+      cachemean(aVector)          # notice mean calculated is mean of 30:50, not 1:10
+      aVector$getmean()           # retrieve it directly, now that it has been cached
+
+<img src="./images/rprog-breakingDownMakeVector05.png">
 
 ## Conclusion: what makes cachemean() work?
 
 To summarize, the lexical scoping assignment in *R Programming* takes advantage of lexical scoping and the fact that functions that return objects of type `list()` also allow access to any other objects defined in the environment of the original function. In the specific instance of `makeVector()` this means that subsequent code can access the values of `x` or `m` through the use of getters and setters. This is how `cachemean()` is able to calculate and store the mean for the input argument if it is of type `makeVector()`. Because list elements in `makeVector()` are defined with names, we can access these functions with the `$` [form of the extract operator](https://github.com/lgreski/datasciencectacontent/blob/master/markdown/rprog-extractOperator.md).
 
-For additional commentary that explains how the assignment uses features of the S3 object system, please review [makeCacheMatrix() as an Object](https://github.com/lgreski/datasciencectacontent/blob/master/markdown/rprogAssignment2Prototype.md). 
+For additional commentary that explains how the assignment uses features of the S3 object system, please review [makeCacheMatrix() as an Object](https://github.com/lgreski/datasciencectacontent/blob/master/markdown/rprogAssignment2Prototype.md).
 
-## Appendix: cachemean.R
+## Appendix A: cachemean.R
 
 Here is the entire listing for cachemean.R.
 
@@ -165,6 +219,42 @@ Here is the entire listing for cachemean.R.
          x$setmean(m)
          m
     }
+
+
+## Appendix B: Frequently Asked Questions
+
+### Q: Why doesn't `cachemean()` return the cached value? My code looks like:
+
+     cachemean(makeVector(1:100))
+     cachemean(makeVector(1:100))
+
+A: Code written this way creates two different objects of type `makeVector()`, so the two calls to `cachemean()` initialize the means of each instance, rather than caching and retrieving from a single instance. Another way of illustrating how the above code operates is as follows.
+
+<img src="./images/rprog-breakingDownMakeVector03.png">
+
+Notice how the first call to `cachemean()` sets the cache, and the second call retrieves data from it.
+
+### Q: Why is `set()` never used in the code?
+
+A: `set()` is included so that once an object of type `makeVector()` is created, its value can be changed without initializing another instance of the object. It is unnecessary the first time an object of type `makeVector()` is instantiated. Why? First, the value of `x` is set as a function argument, as in `makeVector(1:30)`. Then, the first line of code in the function sets `m <- NULL`, simultaneously allocating memory for `m` and setting it to `NULL`. When a reference to this object is passed to the parent environment when the function ends, both `x` and `m` are available to be accessed by their respective get and set functions.
+
+The following code illustrates the use of `set()`.
+
+
+<img src="./images/rprog-breakingDownMakeVector04.png">
+
+
+### Q: Why is `x` set with a default value in `makeVector()`?
+
+A: Since `x` is an argument, the only place where one can set a default for it is in the formals. The type of error returned by `cachemean()` when a default value is not set,
+
+      Error in x$get() : argument "x" is missing, with no default
+
+is undesirable. Our code should directly handle error conditions rather than relying on the underlying error handling in R.  
+
+It's perfectly valid to create an object of type `makeVector()` without populating its value during initialization. `makeVector()` includes a setter function so one can set its value after the object is created. However, the object must have valid data, a numeric vector, prior to executing `cachemean()`.
+
+Ideally, `cachemean()` would include logic to validate that `x` is not empty prior to calculating a mean. The default setting of `x` enables `cachemean()` to return `NaN`, which is a reasonable result.
 
 ## References
 
